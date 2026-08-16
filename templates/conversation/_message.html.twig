@@ -1,0 +1,32 @@
+<div class="d-flex mb-2 {{ message.sender == app.user ? 'justify-content-end' : 'justify-content-start' }}"
+     data-message-id="{{ message.id }}">
+    <div class="p-2 px-3 rounded-3 {{ message.sender == app.user ? 'bg-primary text-white' : 'bg-light' }}"
+         style="max-width: 70%;">
+
+        {% if not message.sender == app.user %}
+            <div class="small fw-bold">{{ message.sender.userIdentifier }}</div>
+        {% endif %}
+
+        <div>{{ message.content }}</div>
+
+        {% for attachment in message.attachments %}
+            <div class="small">
+                <a href="{{ asset('uploads/attachments/' ~ attachment.fileName) }}"
+                   target="_blank"
+                   class="{{ message.sender == app.user ? 'text-white' : '' }}">
+                    <i class="bi bi-paperclip"></i> {{ attachment.originalName }}
+                </a>
+            </div>
+        {% endfor %}
+
+        <div class="d-flex justify-content-end gap-1 mt-1">
+            <small class="{{ message.sender == app.user ? 'text-white-50' : 'text-muted' }}">
+                {{ message.sentAt|date('H:i') }}
+            </small>
+            {% if message.sender == app.user %}
+                <i class="bi bi-check2-all read-indicator small
+                    {{ message.reads is not empty ? 'text-white' : '' }}"></i>
+            {% endif %}
+        </div>
+    </div>
+</div>
