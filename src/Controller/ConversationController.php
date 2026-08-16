@@ -56,6 +56,7 @@ final class ConversationController extends AbstractController
     public function newPrivate(int $userId): Response
     {
         $currentUser = $this->getUser();
+        assert($currentUser instanceof User);
 
         $otherUser = $this->entityManager->getRepository(User::class)->find($userId);
         if (!$otherUser) {
