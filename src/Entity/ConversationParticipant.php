@@ -2,8 +2,9 @@
 
 namespace App\Entity;
 
-use App\Repository\ConversationParticipantRepository;
+use App\Entity\User;
 use Doctrine\ORM\Mapping as ORM;
+use App\Repository\ConversationParticipantRepository;
 
 #[ORM\Entity(repositoryClass: ConversationParticipantRepository::class)]
 #[ORM\UniqueConstraint(name: 'conversation_user_unique', columns: ['conversation_id', 'user_id'])]

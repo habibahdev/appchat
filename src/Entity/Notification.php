@@ -2,8 +2,9 @@
 
 namespace App\Entity;
 
-use App\Repository\NotificationRepository;
+use App\Entity\User;
 use Doctrine\ORM\Mapping as ORM;
+use App\Repository\NotificationRepository;
 
 #[ORM\Entity(repositoryClass: NotificationRepository::class)]
 class Notification
