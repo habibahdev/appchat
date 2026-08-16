@@ -35,7 +35,7 @@ class ConversationRepository extends ServiceEntityRepository
     }
 
     /**
-     * @return Conversation[]|null
+     * @return Conversation|null
      */
     public function findPrivateConversationBetween(User $a, User $b): ?Conversation
     {
