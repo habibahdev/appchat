@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\Attachment;
+use App\Entity\Conversation;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -14,6 +15,21 @@ class AttachmentRepository extends ServiceEntityRepository
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, Attachment::class);
+    }
+
+    /**
+     * @return Attachment[]
+     */
+    public function findByConersation(Conversation $conversation): array
+    {
+        return $this->createQueryBuilder('a')
+            ->innerJoin('a.message', 'm')
+            ->andWhere('m.conversation = :conversation')
+            ->setParameter('conversation', $conversation)
+            ->orderBy('a.uploadedAt', 'DESC')
+            ->getQuery()
+            ->getResult()
+        ;
     }
 
     //    /**

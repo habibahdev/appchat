@@ -2,7 +2,9 @@
 
 namespace App\Repository;
 
+use App\Entity\Conversation;
 use App\Entity\ConversationParticipant;
+use App\Entity\User;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -14,6 +16,41 @@ class ConversationParticipantRepository extends ServiceEntityRepository
     public function __construct(ManagerRegistry $registry)
     {
         parent::__construct($registry, ConversationParticipant::class);
+    }
+
+    public function findOneByConversationAndUser(Conversation $conversation, User $user): ?ConversationParticipant
+    {
+        return $this->createQueryBuilder('cp')
+            ->andWhere('cp.conversation = :conversation')
+            ->andWhere('cp.user = :user')
+            ->setParameter('conversation', $conversation)
+            ->setParameter('user', $user)
+            ->getQuery()
+            ->getOneOrNullResult()
+        ;
+    }
+
+    public function markAsRead(Conversation $conversation, User $user): void
+    {
+        $participant = $this->findOneByConversationAndUser($conversation, $user);
+        if ($participant) {
+            $participant->setLastReadAt(new \DateTimeImmutable());
+            $this->getEntityManager()->flush();
+        }
+    }
+
+    public function findOtherParticipants(Conversation $conversation, User $excludeUser): array
+    {
+        $participants = $this->createQueryBuilder('cp')
+            ->andWhere('cp.conversation = :conversation')
+            ->andWhere('cp.user != :user')
+            ->setParameter('conversation', $conversation)
+            ->setParameter('user', $excludeUser)
+            ->getQuery()
+            ->getResult()
+        ;
+
+        return array_map(fn (ConversationParticipant $p) => $p->getUser(), $participants);
     }
 
     //    /**
