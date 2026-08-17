@@ -29,7 +29,6 @@ final class MessageController extends AbstractController
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly ConversationRepository $conversationRepo,
         private readonly ConversationParticipantRepository $participantRepo,
         private readonly HubInterface $hub,
         private readonly SluggerInterface $slugger,
@@ -48,9 +47,7 @@ final class MessageController extends AbstractController
         $user = $this->getUser();
         assert($user instanceof User);
 
-        if (!$this->conversationRepo->isUserParticipant($conversation, $user)) {
-            throw $this->createAccessDeniedException();
-        }
+        $this->denyAccessUnlessGranted(ConversationVoter::VIEW, $conversation);
 
         $content = $request->request->get('content');
         $uploadedFiles = $request->files->all('attachments');
@@ -199,6 +196,81 @@ final class MessageController extends AbstractController
             json_encode([
                 'action' => 'delete',
                 'id' => $message->getId(),
+            ])
+        );
+        $this->hub->publish($update);
+
+        return $this->json(['success' => true]);
+    }
+
+    #[Route('/older', name: 'message_load_older', methods: ['GET'])]
+    public function loadOlder(int $conversationId, Request $request): JsonResponse
+    {
+        $conversation = $this->entityManager->getRepository(Conversation::class)->find($conversationId);
+        if (!$conversation) {
+            throw $this->createNotFoundException();
+        }
+
+        $this->denyAccessUnlessGranted(ConversationVoter::VIEW, $conversation);
+
+        $beforeMessageId = $request->query->getInt('before');
+        $limit = 20;
+
+        $qb = $this->entityManager->createQueryBuilder()
+            ->select('m')
+            ->from(Message::class, 'm')
+            ->andWhere('m.conversation = :conversation')
+            ->setParameter('conversation', $conversation)
+            ->orderBy('m.sentAt', 'DESC')
+            ->setMaxResults($limit);
+
+        if ($beforeMessageId > 0) {
+            $referenceMessage = $this->entityManager->getRepository(Message::class)->find($beforeMessageId);
+            if ($referenceMessage) {
+                $qb->andWhere('m.sentAt < :beforeDate')
+                    ->setParameter('beforeDate', $referenceMessage->getSentAt());
+            }
+        }
+
+        $messages = $qb->getQuery()->getResult();
+        $messages = array_reverse($messages);
+
+        return $this->json([
+            'messages' => array_map(fn (Message $m) => [
+                'id' => $m->getId(),
+                'content' => $m->getContent(),
+                'senderId' => $m->getSender()->getId(),
+                'senderName' => $m->getSender()->getUserIdentifier(),
+                'sentAt' => $m->getSentAt()->format(\DateTimeInterface::ATOM),
+                'isDeleted' => $m->isDeleted(),
+                'attachments' => array_map(fn ($a) => [
+                    'id' => $a->getId(),
+                    'originalName' => $a->getOriginalName(),
+                    'fileName' => $a->getFileName(),
+                ], $m->getAttachments()->toArray()),
+            ], $messages),
+            'hasMore' => count($messages) === $limit,
+        ]);
+    }
+
+    #[Route('/typing', name: 'message_typing', methods: ['POST'])]
+    public function typing(int $conversationId): JsonResponse
+    {
+        $conversation = $this->entityManager->getRepository(Conversation::class)->find($conversationId);
+        if (!$conversation) {
+            throw $this->createNotFoundException();
+        }
+
+        $this->denyAccessUnlessGranted(ConversationVoter::PARTICIPATE, $conversation);
+
+        $user = $this->getUser();
+        assert($user instanceof User);
+
+        $update = new Update(
+            sprintf('/conversations/%d/typing', $conversation->getId()),
+            json_encode([
+                'userId' => $user->getId(),
+                'userName' => $user->getUserIdentifier(),
             ])
         );
         $this->hub->publish($update);

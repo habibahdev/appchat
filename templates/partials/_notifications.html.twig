@@ -1,0 +1,35 @@
+<div class="dropdown">
+    <button class="btn btn-link position-relative" type="button" data-bs-toggle="dropdown">
+        <i class="bi bi-bell fs-5"></i>
+        <span id="notification-badge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none">
+            0
+        </span>
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end p-2" style="min-width: 300px;" id="notification-list">
+        <li class="text-center text-muted p-3">Aucune notification</li>
+    </ul>
+</div>
+
+<script type="module">
+    const badge = document.getElementById('notification-badge');
+    const list = document.getElementById('notification-list');
+    let unreadCount = 0;
+
+    function addNotificationToUI(notif) {
+        if (list.querySelector('.text-muted')) list.innerHTML = '';
+
+        const item = document.createElement('li');
+        item.innerHTML = `
+            <a class="dropdown-item" href="/conversations/${notif.conversationId}">
+                Nouveau message — ${new Date(notif.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+            </a>
+        `;
+        list.prepend(item);
+
+        unreadCount++;
+        badge.textContent = unreadCount;
+        badge.classList.remove('d-none');
+    }
+
+    window.addEventListener('mercure-notification', (e) => addNotificationToUI(e.detail));
+</script>

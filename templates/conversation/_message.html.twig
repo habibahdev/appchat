@@ -1,31 +1,50 @@
 <div class="d-flex mb-2 {{ message.sender == app.user ? 'justify-content-end' : 'justify-content-start' }}"
      data-message-id="{{ message.id }}">
-    <div class="p-2 px-3 rounded-3 {{ message.sender == app.user ? 'bg-primary text-white' : 'bg-light' }}"
+    <div class="position-relative p-2 px-3 rounded-3 {{ message.sender == app.user ? 'bg-primary text-white' : 'bg-light' }}"
          style="max-width: 70%;">
 
         {% if not message.sender == app.user %}
             <div class="small fw-bold">{{ message.sender.userIdentifier }}</div>
         {% endif %}
 
-        <div>{{ message.content }}</div>
-
-        {% for attachment in message.attachments %}
-            <div class="small">
-                <a href="{{ asset('uploads/attachments/' ~ attachment.fileName) }}"
-                   target="_blank"
-                   class="{{ message.sender == app.user ? 'text-white' : '' }}">
-                    <i class="bi bi-paperclip"></i> {{ attachment.originalName }}
-                </a>
+        {% if message.isDeleted %}
+            <div class="fst-italic small {{ message.sender == app.user ? 'text-white-50' : 'text-muted' }}">
+                Message supprimé
             </div>
-        {% endfor %}
+        {% else %}
+            <div class="message-content">{{ message.content }}</div>
+
+            {% for attachment in message.attachments %}
+                <div class="small">
+                    <a href="{{ asset('uploads/attachments/' ~ attachment.fileName) }}"
+                       target="_blank"
+                       class="{{ message.sender == app.user ? 'text-white' : '' }}">
+                        <i class="bi bi-paperclip"></i> {{ attachment.originalName }}
+                    </a>
+                </div>
+            {% endfor %}
+
+            {% if message.sender == app.user %}
+                <div class="dropdown position-absolute top-0 end-0 mt-1 me-1">
+                    <button class="btn btn-sm btn-link text-white p-0" data-bs-toggle="dropdown">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><button class="dropdown-item btn-edit-message" type="button">Modifier</button></li>
+                        <li><button class="dropdown-item text-danger btn-delete-message" type="button">Supprimer</button></li>
+                    </ul>
+                </div>
+            {% endif %}
+        {% endif %}
 
         <div class="d-flex justify-content-end gap-1 mt-1">
             <small class="{{ message.sender == app.user ? 'text-white-50' : 'text-muted' }}">
                 {{ message.sentAt|date('H:i') }}
+                {% if message.editedAt %}<span class="fst-italic">(modifié)</span>{% endif %}
             </small>
-            {% if message.sender == app.user %}
+            {% if message.sender == app.user and not message.isDeleted %}
                 <i class="bi bi-check2-all read-indicator small
-                    {{ message.reads is not empty ? 'text-white' : '' }}"></i>
+                    {{ message.messageReads is not empty ? 'text-white' : '' }}"></i>
             {% endif %}
         </div>
     </div>
