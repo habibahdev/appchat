@@ -8,7 +8,7 @@
         <div class="col-12 d-flex flex-column h-100">
 
             <div class="p-3 border-bottom d-flex align-items-center gap-2 bg-light">
-                <a href="{{ path('conversation_index') }}" class="btn btn-sm btn-outline-secondary d-md-none">
+                <a href="{{ path('app_conversation_index') }}" class="btn btn-sm btn-outline-secondary d-md-none">
                     <i class="bi bi-arrow-left"></i>
                 </a>
                 <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center"
@@ -26,6 +26,8 @@
                     {% include 'conversation/_message.html.twig' with { message: message } %}
                 {% endfor %}
             </div>
+
+            <div id="typing-indicator" class="px-3 small text-muted fst-italic" style="height: 20px;"></div>
 
             <div class="p-3 border-top bg-white">
                 <form id="message-form" class="d-flex gap-2 align-items-end">
@@ -52,6 +54,7 @@
         import MessagingClient from '{{ asset('assets/js/messaging.js') }}';
 
         window.currentUserId = {{ app.user.id }};
+        window.initialMessageCount = {{ messages|length }};
 
         const client = new MessagingClient({
             mercureUrl: '{{ mercure_public_url }}',
@@ -76,6 +79,23 @@
         client.onMessageRead = (data) => {
             const el = document.querySelector(`[data-message-id="${data.messageId}"] .read-indicator`);
             if (el) el.classList.add('text-primary');
+        };
+
+        client.onMessageEdited = (data) => {
+            const bubble = document.querySelector(`[data-message-id="${data.id}"] .message-content`);
+            if (bubble) bubble.textContent = data.content;
+        };
+
+        client.onMessageDeleted = (data) => {
+            const wrapper = document.querySelector(`[data-message-id="${data.id}"]`);
+            if (wrapper) {
+                const bubble = wrapper.querySelector('.p-2, .px-3');
+                if (bubble) {
+                    bubble.querySelector('.message-content')?.remove();
+                    bubble.querySelector('.dropdown')?.remove();
+                    bubble.insertAdjacentHTML('afterbegin', '<div class="fst-italic small">Message supprimé</div>');
+                }
+            }
         };
 
         client.onPresenceChange = (data) => {
@@ -106,28 +126,131 @@
             }
         });
 
-        function renderMessageBubble(message) {
-            const isMine = message.senderId === window.currentUserId;
-            const attachmentsHtml = (message.attachments || []).map(a =>
-                `<div class="small"><a href="/uploads/attachments/${a.fileName}" target="_blank">${a.originalName}</a></div>`
-            ).join('');
+        container.addEventListener('click', async (e) => {
+            const messageEl = e.target.closest('[data-message-id]');
+            if (!messageEl) return;
+            const messageId = messageEl.dataset.messageId;
 
+            if (e.target.classList.contains('btn-delete-message')) {
+                if (!confirm('Supprimer ce message ?')) return;
+                await client.deleteMessage({{ conversation.id }}, messageId);
+            }
+
+            if (e.target.classList.contains('btn-edit-message')) {
+                const contentEl = messageEl.querySelector('.message-content');
+                const newContent = prompt('Modifier le message :', contentEl.textContent.trim());
+                if (newContent !== null && newContent.trim() !== '') {
+                    await client.editMessage({{ conversation.id }}, messageId, newContent.trim());
+                }
+            }
+        });
+
+        let isLoadingOlder = false;
+        let hasMoreMessages = window.initialMessageCount >= 20;
+
+        container.addEventListener('scroll', () => {
+            if (container.scrollTop < 100 && !isLoadingOlder && hasMoreMessages) {
+                loadOlderMessages();
+            }
+        });
+
+        async function loadOlderMessages() {
+            isLoadingOlder = true;
+
+            const firstMessageEl = container.querySelector('[data-message-id]');
+            const oldestId = firstMessageEl ? firstMessageEl.dataset.messageId : 0;
+
+            const previousHeight = container.scrollHeight;
+
+            const response = await fetch(
+                `/conversations/{{ conversation.id }}/messages/older?before=${oldestId}`,
+                { credentials: 'include' }
+            );
+            const data = await response.json();
+
+            hasMoreMessages = data.hasMore;
+
+            if (data.messages.length > 0) {
+                const html = data.messages.map(renderMessageBubble).join('');
+                container.insertAdjacentHTML('afterbegin', html);
+
+                // conserve la position de scroll pour éviter le "saut" visuel
+                container.scrollTop = container.scrollHeight - previousHeight;
+            }
+
+            isLoadingOlder = false;
+        }
+
+        function renderMessageBubble(message) {
+        const isMine = message.senderId === window.currentUserId;
+
+        if (message.isDeleted) {
             return `
                 <div class="d-flex mb-2 ${isMine ? 'justify-content-end' : 'justify-content-start'}"
-                     data-message-id="${message.id}">
-                    <div class="p-2 px-3 rounded-3 ${isMine ? 'bg-primary text-white' : 'bg-light'}"
-                         style="max-width: 70%;">
-                        <div>${message.content ?? ''}</div>
-                        ${attachmentsHtml}
-                        <div class="d-flex justify-content-end gap-1 mt-1">
-                            <small class="${isMine ? 'text-white-50' : 'text-muted'}">
-                                ${new Date(message.sentAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            </small>
-                            ${isMine ? '<i class="bi bi-check2-all read-indicator small"></i>' : ''}
-                        </div>
+                    data-message-id="${message.id}">
+                    <div class="p-2 px-3 rounded-3 ${isMine ? 'bg-primary text-white' : 'bg-light'}" style="max-width: 70%;">
+                        <div class="fst-italic small">Message supprimé</div>
                     </div>
                 </div>
             `;
         }
+
+        const typingIndicator = document.getElementById('typing-indicator');
+        const typingUsers = new Map(); // userId -> timeoutId
+
+        client.onTyping = (data) => {
+            if (data.userId === window.currentUserId) return; // ignore ses propres événements
+
+            // reset le timer existant pour cet utilisateur
+            if (typingUsers.has(data.userId)) {
+                clearTimeout(typingUsers.get(data.userId));
+            }
+
+            updateTypingDisplay(data.userName, true);
+
+            // l'indicateur s'éteint si aucun nouvel événement sous 3s
+            const timeoutId = setTimeout(() => {
+                typingUsers.delete(data.userId);
+                updateTypingDisplay(null, typingUsers.size > 0);
+            }, 3000);
+
+            typingUsers.set(data.userId, timeoutId);
+        };
+
+        function updateTypingDisplay(userName, isTyping) {
+            if (isTyping && userName) {
+                typingIndicator.textContent = `${userName} est en train d'écrire...`;
+            } else if (typingUsers.size === 0) {
+                typingIndicator.textContent = '';
+            }
+        }
+
+        // déclenche l'envoi pendant que l'utilisateur tape (throttlé côté client)
+        input.addEventListener('input', () => {
+            if (input.value.trim().length > 0) {
+                client.notifyTyping({{ conversation.id }});
+            }
+        });
+
+        const attachmentsHtml = (message.attachments || []).map(a =>
+            `<div class="small"><a href="/uploads/attachments/${a.fileName}" target="_blank">${a.originalName}</a></div>`
+        ).join('');
+
+        return `
+            <div class="d-flex mb-2 ${isMine ? 'justify-content-end' : 'justify-content-start'}"
+                data-message-id="${message.id}">
+                <div class="p-2 px-3 rounded-3 ${isMine ? 'bg-primary text-white' : 'bg-light'}" style="max-width: 70%;">
+                    <div class="message-content">${message.content ?? ''}</div>
+                    ${attachmentsHtml}
+                    <div class="d-flex justify-content-end gap-1 mt-1">
+                        <small class="${isMine ? 'text-white-50' : 'text-muted'}">
+                            ${new Date(message.sentAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </small>
+                        ${isMine ? '<i class="bi bi-check2-all read-indicator small"></i>' : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
     </script>
 {% endblock %}

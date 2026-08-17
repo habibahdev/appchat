@@ -2,18 +2,19 @@
 
 namespace App\Controller;
 
-use App\Entity\Conversation;
-use App\Entity\ConversationParticipant;
 use App\Entity\User;
-use App\Repository\ConversationParticipantRepository;
-use App\Repository\ConversationRepository;
+use App\Entity\Conversation;
 use App\Repository\MessageRepository;
+use App\Entity\ConversationParticipant;
 use Doctrine\ORM\EntityManagerInterface;
-use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\JsonResponse;
+use App\Security\Voter\ConversationVoter;
+use App\Repository\ConversationRepository;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use App\Repository\ConversationParticipantRepository;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 
 #[Route('/conversations', name: 'app_conversation')]
 final class ConversationController extends AbstractController
@@ -127,9 +128,7 @@ final class ConversationController extends AbstractController
     public function show(Conversation $conversation): Response
     {
         $user = $this->getUser();
-        if (!$this->conversationRepo->isUserParticipant($conversation, $user)) {
-            throw $this->createAccessDeniedException();
-        }
+        $this->denyAccessUnlessGranted(ConversationVoter::VIEW, $conversation);
 
         $messages = $this->messageRepo->findByConversationPaginated($conversation);
         $this->participantRepo->markAsRead($conversation, $user);
